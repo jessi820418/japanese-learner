@@ -1,0 +1,85 @@
+import { useNavigate } from "react-router-dom";
+import { useDarkMode } from "../hooks/useDarkMode";
+import { useSettings } from "../hooks/useSettings";
+import SyncSection from "../components/SyncSection";
+
+function ToggleSwitch({ checked, onChange }: { checked: boolean; onChange: () => void }) {
+  return (
+    <button
+      role="switch"
+      aria-checked={checked}
+      onClick={onChange}
+      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+        checked ? "bg-blue-500" : "bg-gray-300 dark:bg-gray-600"
+      }`}
+    >
+      <span
+        className={`inline-block h-4 w-4 rounded-full bg-white transition-transform ${
+          checked ? "translate-x-6" : "translate-x-1"
+        }`}
+      />
+    </button>
+  );
+}
+
+export default function SettingsPage() {
+  const navigate = useNavigate();
+  const { isDark, toggle: toggleDark } = useDarkMode();
+  const { settings, updateSettings } = useSettings();
+
+  return (
+    <div>
+      <h2 className="text-xl font-bold text-gray-900 dark:text-gray-50 mb-6">設定</h2>
+
+      {/* Google Drive Sync */}
+      <div className="mb-6">
+        <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">Google 雲端同步</h3>
+        <SyncSection />
+      </div>
+
+      {/* General Settings */}
+      <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">一般設定</h3>
+      <div className="space-y-1">
+        <div className="flex items-center justify-between py-4 px-4 bg-white dark:bg-gray-800 rounded-t-xl border border-gray-200 dark:border-gray-700">
+          <div>
+            <div className="font-medium text-gray-900 dark:text-gray-50">深色模式</div>
+            <div className="text-sm text-gray-500 dark:text-gray-400">切換深色／淺色主題</div>
+          </div>
+          <ToggleSwitch checked={isDark} onChange={toggleDark} />
+        </div>
+
+        <div className="flex items-center justify-between py-4 px-4 bg-white dark:bg-gray-800 border border-t-0 border-gray-200 dark:border-gray-700">
+          <div>
+            <div className="font-medium text-gray-900 dark:text-gray-50">滑動提示</div>
+            <div className="text-sm text-gray-500 dark:text-gray-400">滑動卡片時顯示顏色與文字提示</div>
+          </div>
+          <ToggleSwitch
+            checked={settings.showSwipeAssist}
+            onChange={() => updateSettings({ showSwipeAssist: !settings.showSwipeAssist })}
+          />
+        </div>
+
+        <div className="flex items-center justify-between py-4 px-4 bg-white dark:bg-gray-800 border border-t-0 border-gray-200 dark:border-gray-700">
+          <div>
+            <div className="font-medium text-gray-900 dark:text-gray-50">日文標假名</div>
+            <div className="text-sm text-gray-500 dark:text-gray-400">在例句的漢字上方標註假名（首次啟用會下載辭典）</div>
+          </div>
+          <ToggleSwitch
+            checked={settings.showFurigana}
+            onChange={() => updateSettings({ showFurigana: !settings.showFurigana })}
+          />
+        </div>
+
+        <button
+          onClick={() => navigate("/about")}
+          className="flex items-center justify-between w-full py-4 px-4 bg-white dark:bg-gray-800 rounded-b-xl border border-t-0 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left"
+        >
+          <div className="font-medium text-gray-900 dark:text-gray-50">更多資訊</div>
+          <svg className="w-5 h-5 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  );
+}

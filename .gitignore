@@ -1,0 +1,42 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Test fixture data copied into data/ during e2e runs
+data/test-*.json
+
+# Kuromoji dictionary copied from node_modules by scripts/copy-dict.cjs
+public/dict/
+
+# Pre-generated TTS audio (public/audio/) is committed so GitHub Pages serves it
+# without needing gateway access at build time. Regenerate with scripts/gen-audio.cjs.
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+.playwright/
+**/.last-run.json
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+.env

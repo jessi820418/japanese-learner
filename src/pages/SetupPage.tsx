@@ -1,0 +1,246 @@
+import { useState } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import { useDatasetById } from "../hooks/useDatasets";
+import { loadProgress, loadTestModes, saveTestModes, loadActiveSession } from "../lib/storage";
+import { getDatasetStats, getMultiModeDatasetStats } from "../lib/stats";
+import ModeSelector from "../components/ModeSelector";
+import DatasetStatsDisplay from "../components/DatasetStats";
+import type { SessionType, ConcreteTestMode } from "../types";
+import {
+  VOCAB_TEST_MODES,
+  GRAMMAR_TEST_MODES,
+  MIX_TEST_MODES,
+  MIX_DEFAULT_MODES,
+} from "../types";
+
+const SESSION_SIZES = [10, 20, 30];
+
+export default function SetupPage() {
+  const { datasetId } = useParams<{ datasetId: string }>();
+  const navigate = useNavigate();
+  const dataset = useDatasetById(datasetId ?? "");
+
+  const category = dataset?.category ?? "vocabulary";
+  const isMix = category === "mix";
+  const isVocab = category === "vocabulary";
+  const modes = isMix ? MIX_TEST_MODES : isVocab ? VOCAB_TEST_MODES : GRAMMAR_TEST_MODES;
+
+  const saved = loadTestModes(category);
+  // Resolve default: use saved value if it's valid, otherwise first mode (or MIX_DEFAULT_MODES for mix)
+  const resolveDefault = (): string | string[] => {
+    if (saved == null) return isMix ? MIX_DEFAULT_MODES : modes[0].value;
+    if (Array.isArray(saved)) {
+      const valid = saved.filter((s) => modes.some((m) => m.value === s));
+      if (valid.length === 0) return isMix ? MIX_DEFAULT_MODES : modes[0].value;
+      return valid.length === 1 ? valid[0] : valid;
+    }
+    if (modes.some((m) => m.value === saved)) return saved;
+    return isMix ? MIX_DEFAULT_MODES : modes[0].value;
+  };
+
+  const [selectedModes, setSelectedModes] = useState<string | string[]>(resolveDefault);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  const handleModeChange = (newModes: string | string[]) => {
+    setSelectedModes(newModes);
+    saveTestModes(category, newModes);
+  };
+
+  const [sessionSize, setSessionSize] = useState(20);
+
+  if (!dataset) {
+    return (
+      <div className="text-center py-12 text-gray-400 dark:text-gray-500">
+        <p>找不到學習集</p>
+      </div>
+    );
+  }
+
+  const progress = loadProgress();
+
+  // Use multi-mode stats when multiple concrete modes selected
+  const selectedArray = Array.isArray(selectedModes) ? selectedModes : [selectedModes];
+  const isMultiMode = selectedArray.length > 1 && !selectedArray.includes("random");
+  const stats = isMultiMode
+    ? getMultiModeDatasetStats(dataset.data, progress, selectedArray as ConcreteTestMode[], isMix ? "mix" : undefined)
+    : getDatasetStats(dataset.data, progress);
+
+  // Detect an unfinished session for this dataset to offer a resume entry.
+  const active = loadActiveSession();
+  const hasResumableSession =
+    !!active && active.datasetId === datasetId && active.currentIndex < active.queue.length + active.requeue.length;
+
+  const handleStart = (sessionType: SessionType) => {
+    navigate(`/study/${datasetId}/session`, {
+      state: { modes: selectedModes, sessionSize, sessionType },
+    });
+  };
+
+  const handleResume = () => {
+    if (!active) return;
+    navigate(`/study/${datasetId}/session`, {
+      state: {
+        modes: active.modes,
+        sessionSize,
+        sessionType: active.sessionType,
+        specificCardIds: active.specificCardIds,
+      },
+    });
+  };
+
+  const handleLearn = () => {
+    navigate(`/learn/${datasetId}`);
+  };
+
+  return (
+    <div>
+      {/* Dataset info */}
+      <div className="mb-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-bold text-gray-900 dark:text-gray-50">{dataset.name}</h2>
+          <button
+            onClick={() => navigate(`/manage/${datasetId}`)}
+            className="text-sm text-blue-600 dark:text-blue-400 font-medium hover:text-blue-700 dark:hover:text-blue-300"
+          >
+            管理
+          </button>
+        </div>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+          {dataset.level} · {dataset.data.length} 張卡片
+        </p>
+      </div>
+
+      {/* Resume unfinished session */}
+      {hasResumableSession && (
+        <button
+          onClick={handleResume}
+          className="w-full mb-4 py-3 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700 transition-colors tap-active flex items-center justify-center gap-2"
+        >
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 9.75l4.5 2.25-4.5 2.25v-4.5z" />
+          </svg>
+          繼續上次複習（第 {Math.min(active!.currentIndex + 1, active!.queue.length + active!.requeue.length)} / {active!.queue.length + active!.requeue.length} 張）
+        </button>
+      )}
+
+      {/* Statistics */}
+      <DatasetStatsDisplay stats={stats} />
+
+      {/* Learn mode button */}
+      <button
+        onClick={handleLearn}
+        className="w-full mb-6 py-3 rounded-xl border-2 border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-semibold hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors tap-active flex items-center justify-center gap-2"
+      >
+        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+        </svg>
+        學習模式（瀏覽全部卡片）
+      </button>
+
+      {/* Test mode selection */}
+      <div className="mb-6">
+        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">測驗模式</h3>
+
+        {isMix && !showAdvanced ? (
+          <div>
+            {/* Compact pills for default mix modes */}
+            <div className="flex flex-wrap gap-2">
+              {(Array.isArray(selectedModes) ? selectedModes : [selectedModes]).map((m) => {
+                const mode = MIX_TEST_MODES.find((mt) => mt.value === m);
+                return (
+                  <span key={m} className="px-3 py-2 rounded-xl text-sm font-medium bg-gray-900 dark:bg-white text-white dark:text-gray-900">
+                    {mode?.label ?? m}
+                  </span>
+                );
+              })}
+            </div>
+            <button
+              onClick={() => setShowAdvanced(true)}
+              className="text-sm text-blue-600 dark:text-blue-400 font-medium hover:text-blue-700 dark:hover:text-blue-300 mt-2 cursor-pointer"
+            >
+              進階設定
+            </button>
+          </div>
+        ) : (
+          <div>
+            <ModeSelector
+              modes={modes}
+              selected={selectedModes}
+              onChange={handleModeChange}
+              grouped={isMix}
+              defaultModes={isMix ? MIX_DEFAULT_MODES : undefined}
+            />
+            {isMix && (
+              <button
+                onClick={() => setShowAdvanced(false)}
+                className="text-sm text-blue-600 dark:text-blue-400 font-medium hover:text-blue-700 dark:hover:text-blue-300 mt-2 cursor-pointer"
+              >
+                收起
+              </button>
+            )}
+          </div>
+        )}
+
+        {isMultiMode && (
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
+            {isMix
+              ? "每張卡片將以適用的模式各測驗一次"
+              : `每張卡片將以 ${selectedArray.length} 種模式各測驗一次`}
+          </p>
+        )}
+      </div>
+
+      {/* Session size */}
+      <div className="mb-6">
+        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">每次數量</h3>
+        <div className="flex gap-2">
+          {SESSION_SIZES.map((size) => (
+            <button
+              key={size}
+              onClick={() => setSessionSize(size)}
+              className={`px-5 py-2 rounded-xl font-medium transition-colors ${
+                sessionSize === size
+                  ? "bg-gray-900 dark:bg-white text-white dark:text-gray-900"
+                  : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+              }`}
+            >
+              {size}
+            </button>
+          ))}
+          <button
+            onClick={() => setSessionSize(dataset.data.length)}
+            className={`px-5 py-2 rounded-xl font-medium transition-colors ${
+              !SESSION_SIZES.includes(sessionSize)
+                ? "bg-gray-900 dark:bg-white text-white dark:text-gray-900"
+                : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+            }`}
+          >
+            全部
+          </button>
+        </div>
+      </div>
+
+      {/* Action buttons */}
+      <div className="space-y-3">
+        <button
+          onClick={() => handleStart("due")}
+          disabled={stats.dueCards === 0}
+          className={`w-full py-4 rounded-xl text-lg font-bold transition-colors tap-active ${
+            stats.dueCards === 0
+              ? "bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed"
+              : "bg-gray-900 dark:bg-white text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-100"
+          }`}
+        >
+          {stats.dueCards === 0 ? "沒有待複習的卡片" : `開始測驗（${stats.dueCards} 張待複習）`}
+        </button>
+        <button
+          onClick={() => handleStart("random")}
+          className="w-full py-3 rounded-xl border-2 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 font-semibold hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors tap-active"
+        >
+          隨機複習（全部卡片）
+        </button>
+      </div>
+    </div>
+  );
+}
