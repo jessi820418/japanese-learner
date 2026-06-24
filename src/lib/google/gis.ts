@@ -104,6 +104,16 @@ export function requestAccessToken(): Promise<GoogleAuthState> {
             reject(new Error(response.error_description || response.error));
             return;
           }
+          // Verify the user actually granted the Drive scope. With incremental
+          // consent the user can untick the Drive checkbox and proceed with
+          // only `email`, which later yields ACCESS_TOKEN_SCOPE_INSUFFICIENT
+          // (403) on every Drive call. Catch it here with a clear message
+          // instead of letting sync fail opaquely.
+          const granted = response.scope || "";
+          if (!granted.includes("drive.file")) {
+            reject(new Error("未授權 Google 雲端硬碟權限，請重新登入並勾選雲端硬碟存取。"));
+            return;
+          }
           // Fetch email from userinfo (with retry)
           const expiresAt = Date.now() + response.expires_in * 1000;
           fetchEmailWithRetry(response.access_token).then((email) => {
@@ -120,7 +130,10 @@ export function requestAccessToken(): Promise<GoogleAuthState> {
           reject(new Error(error.message || "OAuth error"));
         },
       });
-      client.requestAccessToken();
+      // Force the consent screen so the Drive-scope checkbox is always shown
+      // (and pre-ticked). Without this, Google may silently reuse a prior
+      // grant that lacked the Drive scope.
+      client.requestAccessToken({ prompt: "consent" });
     });
   });
 }
