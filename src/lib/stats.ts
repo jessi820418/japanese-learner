@@ -1,7 +1,23 @@
 import type { DataItem, ProgressStore, CardProgress, ConcreteTestMode, Category } from "../types";
 import { isVocabItem, VOCAB_MODE_VALUES, GRAMMAR_MODE_VALUES } from "../types";
 import { isDue } from "./sm2";
-import { makeProgressKey } from "./storage";
+import { makeProgressKey, parseProgressKey } from "./storage";
+
+/**
+ * Group all progress entries by their base cardId, so a card studied in
+ * multi-mode (stored under composite keys `cardId::mode`) is found alongside
+ * one studied in single-mode (stored under the plain `cardId`).
+ */
+function groupProgressByCardId(progress: ProgressStore): Map<string, CardProgress[]> {
+  const byCard = new Map<string, CardProgress[]>();
+  for (const [key, p] of Object.entries(progress)) {
+    const { cardId } = parseProgressKey(key);
+    const list = byCard.get(cardId);
+    if (list) list.push(p);
+    else byCard.set(cardId, [p]);
+  }
+  return byCard;
+}
 
 export interface DatasetStats {
   totalCards: number;
@@ -13,6 +29,15 @@ export interface DatasetStats {
 
 /**
  * Compute statistics for a dataset based on progress data.
+ *
+ * Mode-agnostic: a card is counted whether its progress was stored under the
+ * plain `cardId` (single-mode study) OR any composite `cardId::mode` key
+ * (multi-mode study). Without this, a card studied only in multi-mode shows as
+ * "已學 0" on the home page because that view doesn't know which modes were
+ * used. Aggregation rules mirror getMultiModeDatasetStats:
+ *   - learned: any entry exists for the card
+ *   - due:     any entry is due (or no entry at all → a brand-new card is due)
+ *   - mastered: every existing entry has repetitions >= 3
  */
 export function getDatasetStats(
   data: DataItem[],
@@ -23,17 +48,20 @@ export function getDatasetStats(
   let dueCards = 0;
   let masteredCards = 0;
 
+  const byCard = groupProgressByCardId(progress);
+
   for (const item of data) {
-    const p: CardProgress | undefined = progress[item.id];
-    if (p) {
-      learnedCards++;
-      if (p.repetitions >= 3) {
-        masteredCards++;
-      }
+    const entries = byCard.get(item.id);
+
+    if (!entries || entries.length === 0) {
+      // No progress under any key → brand-new card, counts as due.
+      if (isDue(undefined)) dueCards++;
+      continue;
     }
-    if (isDue(p)) {
-      dueCards++;
-    }
+
+    learnedCards++;
+    if (entries.every((p) => p.repetitions >= 3)) masteredCards++;
+    if (entries.some((p) => isDue(p))) dueCards++;
   }
 
   const masteryPercent = totalCards > 0 ? Math.round((masteredCards / totalCards) * 100) : 0;

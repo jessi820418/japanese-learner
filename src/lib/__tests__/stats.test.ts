@@ -104,6 +104,48 @@ describe("getDatasetStats", () => {
     const stats = getDatasetStats(data, progress);
     expect(stats.masteryPercent).toBe(100);
   });
+
+  // Regression: a card studied only in multi-mode is stored under composite
+  // keys (`id::mode`). The home page calls getDatasetStats, which must still
+  // count it as learned — otherwise it shows "已學 0" despite having studied.
+  it("counts cards learned via composite (multi-mode) keys", () => {
+    const data = [makeItem("1"), makeItem("2"), makeItem("3")];
+    const progress: ProgressStore = {
+      "1::kanji-to-chinese": makeProgress("1::kanji-to-chinese", 1, "2025-06-20"),
+      "2::hiragana-to-chinese": makeProgress("2::hiragana-to-chinese", 5, "2025-06-20"),
+    };
+
+    const stats = getDatasetStats(data, progress);
+    expect(stats.learnedCards).toBe(2); // cards 1 and 2, despite composite keys
+    expect(stats.dueCards).toBe(1); // only card 3 (no progress)
+  });
+
+  it("mastered requires ALL existing mode entries >= 3 reps", () => {
+    const data = [makeItem("1"), makeItem("2")];
+    const progress: ProgressStore = {
+      // card 1: both modes mastered → mastered
+      "1::kanji-to-chinese": makeProgress("1::kanji-to-chinese", 4, "2025-06-20"),
+      "1::hiragana-to-chinese": makeProgress("1::hiragana-to-chinese", 3, "2025-06-20"),
+      // card 2: one mode not yet mastered → not mastered
+      "2::kanji-to-chinese": makeProgress("2::kanji-to-chinese", 5, "2025-06-20"),
+      "2::hiragana-to-chinese": makeProgress("2::hiragana-to-chinese", 1, "2025-06-20"),
+    };
+
+    const stats = getDatasetStats(data, progress);
+    expect(stats.learnedCards).toBe(2);
+    expect(stats.masteredCards).toBe(1); // only card 1
+  });
+
+  it("card is due if any composite mode entry is overdue", () => {
+    const data = [makeItem("1")];
+    const progress: ProgressStore = {
+      "1::kanji-to-chinese": makeProgress("1::kanji-to-chinese", 3, "2025-06-20"), // not due
+      "1::hiragana-to-chinese": makeProgress("1::hiragana-to-chinese", 1, "2025-06-10"), // overdue
+    };
+
+    const stats = getDatasetStats(data, progress);
+    expect(stats.dueCards).toBe(1);
+  });
 });
 
 describe("getMultiModeDatasetStats", () => {
